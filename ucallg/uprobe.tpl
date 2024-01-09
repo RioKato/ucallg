@@ -103,7 +103,7 @@ int is_target(void);
 struct context *context_get(void);
 int tracef(const char *format, ...);
 
-static inline unsigned long raddr(struct pt_regs *regs)
+static inline unsigned long retaddr(struct pt_regs *regs)
 {
     unsigned long p;
     if (copy_from_user(&p, (void __user *)regs->sp, user_64bit_mode(regs) ? 8 : 4))
@@ -112,11 +112,42 @@ static inline unsigned long raddr(struct pt_regs *regs)
     return p;
 }
 
+static inline unsigned long calladdr(struct pt_regs *regs)
+{
+    unsigned long p;
+    if ((p = retaddr(regs)) == -1)
+        return -1;
+
+    /* call opecode */
+    /* 0xE8 */
+    /* 0xFF 0b??010??? */
+    /* 0xFF 0b??011??? */
+    /* 0b01001??? 0xFF 0b??011??? */
+    unsigned char insn[6];
+    if (copy_from_user(&p, (void __user *)(p - sizeof(insn)), sizeof(insn)))
+        return -1;
+
+    if (insn[sizeof(insn) - 5] == 0xE8 &&
+        (p + insn[sizeof(insn) - 4] + (insn[sizeof(insn) - 3] << 8) + (insn[sizeof(insn) - 2] << 16) + (insn[sizeof(insn) - 1] << 24)) == regs->ip)
+        return p - 5;
+
+    for (int i = sizeof(insn) - 1; i--;)
+        if (insn[i] == 0xFF &&
+            ((insn[i + 1] & 0x10) == 0x10 || (insn[i + 1] & 0x18) == 0x18))
+            return p - sizeof(insn) + i;
+
+#ifdef DEBUG
+    pr_notice("call opecode not found");
+#endif
+
+    return p;
+}
+
 #define uprobef(name, ctx, regs) ({                                              \
     tracef(                                                                      \
         "%d," #name ",0,%d,0x%px,"                                               \
         "0x%px,0x%px,0x%px,0x%px,0x%px,0x%px",                                   \
-        (ctx)->pid, (ctx)->depth - (ctx)->bottom, raddr(regs),                   \
+        (ctx)->pid, (ctx)->depth - (ctx)->bottom, calladdr(regs),                \
         (regs)->di, (regs)->si, (regs)->dx, (regs)->cx, (regs)->r8, (regs)->r9); \
 })
 
