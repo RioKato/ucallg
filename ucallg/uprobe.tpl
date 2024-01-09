@@ -124,7 +124,7 @@ static inline unsigned long calladdr(struct pt_regs *regs)
     /* 0xFF 0b??011??? */
     /* 0b01001??? 0xFF 0b??011??? */
     unsigned char insn[6];
-    if (copy_from_user(&p, (void __user *)(p - sizeof(insn)), sizeof(insn)))
+    if (copy_from_user(insn, (void __user *)(p - sizeof(insn)), sizeof(insn)))
         return -1;
 
     if (insn[sizeof(insn) - 5] == 0xE8 &&
